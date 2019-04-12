@@ -1,7 +1,4 @@
-/**
- * Default firmware for LINE Things development board
- * リポジトリの /liff-app/linethings-dev-default にある LIFF と組み合わせて利用
- */
+
 
 #include <bluefruit.h>
 #include <Wire.h>
@@ -18,6 +15,8 @@
 
 #define BLE_DEV_NAME "LINE Things multi conn demo"
 
+#define BLE_MAX_PRPH_CONNECTION 3
+
 #define SW1 29
 #define SW2 28
 #define LED_DS2 7
@@ -33,7 +32,6 @@
 #define GPIO14 14
 #define GPIO15 15
 #define GPIO16 16
-
 
 /*********************************************************************************
 * I2C Peripherals
@@ -113,7 +111,7 @@ void bleConfigure(int power) {
   strUUID2Bytes(USER_SERVICE_UUID, blesv_devboard_uuid);
   strUUID2Bytes(USER_CHARACTERISTIC_WRITE_UUID, blesv_devboard_write_uuid);
   // BLE start
-  Bluefruit.begin();
+  Bluefruit.begin(BLE_MAX_PRPH_CONNECTION, 0);
   // Set max Tx power
   // Accepted values are: -40, -30, -20, -16, -12, -8, -4, 0, 4
   Bluefruit.setTxPower(power);
@@ -162,51 +160,61 @@ void bleSetupServiceUser() {
   blesv_user.begin();
 }
 
+volatile int g_central_count = 0;
+volatile int g_message_index = 0;
+volatile char g_message_history[5][20];
+
+void drawDisplayInfo(){
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  for (int i = 0; i < 5; i++) {
+    for (int j = 0; j < 16; j++){
+        display.print(g_message_history[i][j]);
+        Serial.print(g_message_history[i][j]);
+    }
+    //display.println(g_message_history[i]);
+    display.println("");
+    Serial.println("");
+  }
+
+  display.setCursor(0, 50);
+  display.print("Connection : " + String(g_central_count));
+  display.display();            // ディスプレイを更新
+}
 
 // Event for connect BLE central
 void bleConnectEvent(uint16_t conn_handle) {
   char central_name[32] = {0};
+
+  g_central_count++;
 
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
   connection->getPeerName(central_name, sizeof(central_name));
 
   Serial.print("Connected from ");
   Serial.println(central_name);
+
+  Serial.println("Keep advertising");
+  Bluefruit.Advertising.start(0);
+
+  drawDisplayInfo();
 }
 
 // Event for disconnect BLE central
 void bleDisconnectEvent(uint16_t conn_handle, uint8_t reason) {
   (void)reason;
   (void)conn_handle;
+  g_central_count--;
   Serial.println("BLE central disconnect");
+
+  drawDisplayInfo();
 }
 
-
-volatile int g_central_count = 0;
-
-/*
-typedef struct ble_central_hundle{
-  byte name[32];
-  byte id;
-} bleCentralHundle;
-
-volatile bleCentralHundle g_central_hundle[256];
-*/
-
-volatile int g_message_index = 0;
-volatile char g_message_history[5][20];
-
-/**
- * Format
- * <CMD(1Byte), don't care(2Byte), hash of payload/don'tcare(1Byte), Payload(16Byte)>
- * CMD = 0 : Write to peripheral device. LED, buzzer and GPIO
- *    CMD0(0:1Byte), don't care(0:17Byte), Peripheral(x:2Byte)
- * CMD = 1 : Write new service UUID : When update UUID, Should be self restart MPU:
- *    CMD1(1:1Byte), don't care(0,2Byte), hash of payload(x:1Byte),
- *    UUID(x:16Byte) UUID shoud be send binary.
- */
 void bleWriteEvent(uint16_t conn_handle, BLECharacteristic* chr, uint8_t* data, uint16_t len) {
   char central_name[32] = {0};
+
+  Serial.println("BLE Write");
+
 
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
   connection->getPeerName(central_name, sizeof(central_name));
@@ -224,14 +232,7 @@ void bleWriteEvent(uint16_t conn_handle, BLECharacteristic* chr, uint8_t* data, 
   }
 
   //表示
-  display.clearDisplay  ();
-  for (int i = 0; i < 5; i++) {
-    for (int j = 0; j < 16; j++){
-        display.print(g_message_history[i][j]);
-      }
-    //display.println(g_message_history[i]);
-  }
-  display.display();            // ディスプレイを更新
+  drawDisplayInfo();
 }
 
 /*********************************************************************************
@@ -239,7 +240,7 @@ void bleWriteEvent(uint16_t conn_handle, BLECharacteristic* chr, uint8_t* data, 
 *********************************************************************************/
 void setup() {
   // Serial通信初期化
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   //スイッチを入力に設定
   pinMode(SW1, INPUT_PULLUP);
@@ -277,6 +278,10 @@ void setup() {
   // ディスプレイの初期化
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // ディスプレイの表示に必要な電圧を生成, アドレスは 0x3C
   display.clearDisplay();  // ディスプレイのバッファを初期化
+  display.setTextColor(WHITE);  // Color White
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("start");
   display.display();       // ディスプレイのバッファを表示
 
   // 加速度センサの初期化
@@ -292,6 +297,7 @@ void setup() {
   bleSetupServiceUser();
   bleStartAdvertising();
 
+  Serial.println("Initial done");
 }
 
 void loop() {
