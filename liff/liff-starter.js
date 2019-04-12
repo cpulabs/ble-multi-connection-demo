@@ -158,10 +158,6 @@ function initializeCardForDevice(device) {
     });
 
 
-    template.querySelector('.notification-enable').addEventListener('click', () => {
-        toggleNotification(device).catch(e => onScreenLog(`ERROR on toggleNotification(): ${e}\n${e.stack}`));
-    });
-
     // Tabs
     ['notify', 'write', 'advert'].map(key => {
         const tab = template.querySelector(`#nav-${key}-tab`);
@@ -219,54 +215,6 @@ function updateConnectionStatus(device, status) {
     }
 }
 
-async function toggleNotification(device) {
-    if (!connectedUUIDSet.has(device.id)) {
-        window.alert('Please connect to a device first');
-        onScreenLog('Please connect to a device first.');
-        return;
-    }
-
-    const accelerometerCharacteristic = await getCharacteristic(
-        device, USER_SERVICE_UUID, USER_CHARACTERISTIC_NOTIFY_UUID);
-
-    if (notificationUUIDSet.has(device.id)) {
-        // Stop notification
-        await stopNotification(accelerometerCharacteristic, notificationCallback);
-        notificationUUIDSet.delete(device.id);
-        getDeviceNotificationButton(device).classList.remove('btn-success');
-        getDeviceNotificationButton(device).classList.add('btn-secondary');
-        getDeviceNotificationButton(device).getElementsByClassName('fas')[0].classList.remove('fa-toggle-on');
-        getDeviceNotificationButton(device).getElementsByClassName('fas')[0].classList.add('fa-toggle-off');
-    } else {
-        // Start notification
-        await enableNotification(accelerometerCharacteristic, notificationCallback);
-        notificationUUIDSet.add(device.id);
-        getDeviceNotificationButton(device).classList.remove('btn-secondary');
-        getDeviceNotificationButton(device).classList.add('btn-success');
-        getDeviceNotificationButton(device).getElementsByClassName('fas')[0].classList.remove('fa-toggle-off');
-        getDeviceNotificationButton(device).getElementsByClassName('fas')[0].classList.add('fa-toggle-on');
-    }
-}
-
-async function enableNotification(characteristic, callback) {
-    const device = characteristic.service.device;
-    characteristic.addEventListener('characteristicvaluechanged', callback);
-    await characteristic.startNotifications();
-    onScreenLog('Notifications STARTED ' + characteristic.uuid + ' ' + device.id);
-}
-
-async function stopNotification(characteristic, callback) {
-    const device = characteristic.service.device;
-    characteristic.removeEventListener('characteristicvaluechanged', callback);
-    await characteristic.stopNotifications();
-    onScreenLog('Notifications STOPPED　' + characteristic.uuid + ' ' + device.id);
-}
-
-function notificationCallback(e) {
-    const accelerometerBuffer = new DataView(e.target.value.buffer);
-    onScreenLog(`Notify ${e.target.uuid}: ${buf2hex(e.target.value.buffer)}`);
-    updateSensorValue(e.target.service.device, accelerometerBuffer);
-}
 
 async function refreshValues(device) {
     const accelerometerCharacteristic = await getCharacteristic(
